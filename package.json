@@ -1,0 +1,49 @@
+{
+  "name": "dsh-mastery-loop",
+  "version": "0.1.0",
+  "description": "Opt-in DeepSeek Harness skill bundle: mastery-loop — an exam-revision loop that drills until every knowledge point reaches your target accuracy. / 通用应试复习闭环。",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "skills",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "agent-skill",
+    "study",
+    "revision",
+    "exam",
+    "mastery"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Noct2vis/dsh-mastery-loop.git"
+  },
+  "homepage": "https://github.com/Noct2vis/dsh-mastery-loop#readme",
+  "bugs": "https://github.com/Noct2vis/dsh-mastery-loop/issues",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "sync": "node scripts/sync-dev.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
