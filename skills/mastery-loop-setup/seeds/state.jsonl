@@ -1,0 +1,2 @@
+{"kind":"header","用途":"本文件是状态表（变化检测）：有 git 时只记上次检查到的提交号；没有 git 时逐文件记内容哈希。管「要不要重看」，不管「发生过什么」（那是 git / changes.jsonl）。"}
+{"mode":"git","last":"<上次检查到的 commit>","schema":"0.2.0","checked":"<YYYY-MM-DD HH:MM>"}

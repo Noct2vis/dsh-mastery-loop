@@ -1,0 +1,10 @@
+feat!: kb/ + sys/ 架构 —— 知识点契约 v2，7 个脚本
+
+- 布局：kb/（knowledge + MOC）+ sys/（config / graph / ledger / errors / error-taxonomy / paper-format / state）
+- 知识点：分类（生成知识点时附上，多值）+ 归属（来源文件，多值）；正文六节，删「平行关联」
+- 关系：sys/graph.json 为真值 + 六项校验；后置由图反算、不手写
+- 脚本：_lib / graph / aggregate / scan / rewrite-links / ledger / validate（Node 零依赖，不拼 shell）
+- 变化检测与历史：git 优先，无 git 才回退 state.jsonl 哈希 / changes.jsonl 流水
+- 修复：mastery-loop-setup 的 frontmatter 非法 YAML（description 里「冒号 + 空格」）—— 自 0.1.0 起该 skill 被加载器整个丢弃，/mastery-loop-setup 从未出现
+
+BREAKING CHANGE: 库布局与知识点字段集都变了，0.1.0 的库需要重新对齐

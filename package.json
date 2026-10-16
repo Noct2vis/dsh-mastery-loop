@@ -1,6 +1,6 @@
 {
   "name": "dsh-mastery-loop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Opt-in DeepSeek Harness skill bundle: mastery-loop — an exam-revision loop that drills until every knowledge point reaches your target accuracy. / 通用应试复习闭环。",
   "license": "MIT",
   "type": "module",
