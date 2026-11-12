@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.3.0
+
+**拆分 + 改名（不兼容）** —— 日常流程拆成五个可独立触发的 skill，`mastery-loop` 改名为 `malo-quiz`。
+
+- 新增 `/malo-kbcheck`（只读体检）、`/malo-intake`（新文件入库）、`/malo-study`（学习阶段）、`/malo-quiz`（考试循环）；`/malo-setup` 取代 `/mastery-loop-setup`。
+- `/mastery-loop` 与 `/mastery-loop-setup` 保留为重定向壳，只响应手动输入。
+- 新增「学习阶段」：按关系图拓扑、以讲次为单位过材料，每点 1 题（错则回读再 1 题）初始化掌握度。
+- 熟练度改为 Jeffreys 估计 `(做对+0.5)/(总共出过+1)`；删除「总共出过 ≥ 5」硬阈值；4/4 = 90%。
+- 错误原因改为结构化记录：`谓词`（8 类 + `other`）/ `涉及` / `方面`，原文只用于展示；跨点混淆只写一条。
+- 批改与写回合并为一个动作；`sys/config.json` 新增「闸门」与「覆盖率阈值」。
+- 共享契约与脚本移到 `skills/_shared/`；`LIB_VERSION` 成为技能版本。
+
+### 图模型 v2（本批）
+
+- `sys/graph.json` 升 **version 2**：`edges` = 必要前置（AND），新增 `groups` = 任一前置组（OR，`mode:"any"`）。旧图零迁移（当时 557 条边全按 AND 读）。
+- 校验 **六项 → 八项**：新增 7 无环（Tarjan，打印环路径）、8 组结构（`of` 非空、`mode` 为 `any`、id 唯一、组内两两不可达）。
+- 新增分层：`check --layers --write` 写 `sys/layers.json`，`depth = 1 + max(AND)`，OR 组取 `1 + min`。
+- 新增 `render-graph.mjs` + `graph-view.js`：生成自包含 `sys/graph.html`（分层、缩放/平移/小地图、搜索、边 reason、按分类/标签筛选、点节点看邻域），零依赖。
+- `## 前置知识` 支持 OR 行：`- [[X]] 或 [[Y]]（任一） —— reason`；`backlinks` 会渲染它。
+- 删掉从未实现的 `sys/changes.jsonl` 承诺；`state.jsonl` header 修正；git 变化检测纳入 `sys/` 的 json/jsonl。
+- 新增 `review.mjs`：重审候选（指纹变化 / 从未审过 / 新点邻域 / 90 天老化）、增量清单 `.md`/`.json`、`mark` 盖 `reviewedAt`/`fp`；改图满 5 次或 `--force` 强制全量。契约 §十三。
+- 真实库已按 0.3.0 迁移：`schema_version` 0.3.0、`graph.json` v2（540 条边，17 条传递冗余已删）、`layers.json` 已生成。
+
+### 迁移（0.2.0 → 0.3.0）
+
+1. `sys/config.json`：
+   - `schema_version` 改为 `"0.3.0"`；
+   - 加 `闸门`（六项，默认：入库/study开局/批改写回/达标后继续 = 每次，出题 = 仅首轮，study单点 = 从不）；
+   - 加 `覆盖率阈值: 0.3`。
+2. `sys/errors.jsonl`：每条 `kind:"error"` 记录补 `谓词`（`confuse / overgeneralize / misorder / omit / invert / misapply / miscompute / notation / other`）、`涉及`（跨点混淆填另一篇，否则空数组）、`方面`（自由短标签，可为空）。**这一步由 agent 读原文判断，用户逐条或批量确认。**
+3. 跑 `node <shared>/scripts/scan.mjs <工作区根> --update-state` 刷新 `sys/state.jsonl`。
+4. `sys/graph.json`：`version` 改为 `2`，补 `"groups": []`（旧边全部按 AND 读，不需要改边）；
+5. 跑 `validate.mjs` 与 `graph.mjs check`；不过就先修。
+
+
 ## 0.2.0
 
 **架构重写（不兼容）** —— 库的布局、文件格式、脚本边界全变了。已有的库要重新对齐一次。

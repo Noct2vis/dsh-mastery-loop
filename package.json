@@ -1,7 +1,7 @@
 {
   "name": "dsh-mastery-loop",
-  "version": "0.2.0",
-  "description": "Opt-in DeepSeek Harness skill bundle: mastery-loop — an exam-revision loop that drills until every knowledge point reaches your target accuracy. / 通用应试复习闭环。",
+  "version": "0.3.0",
+  "description": "Opt-in DeepSeek Harness skill bundle: malo — study the graph, then drill until every knowledge point reaches your target accuracy. / 通用应试复习：先学后考，按关系图过材料，再出题批改到逐点达标。",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -41,7 +41,8 @@
     }
   },
   "scripts": {
-    "sync": "node scripts/sync-dev.mjs"
+    "sync": "node scripts/sync-dev.mjs",
+    "test": "node tests/scripts.test.mjs"
   },
   "publishConfig": {
     "access": "public"

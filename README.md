@@ -1,15 +1,8 @@
-# mastery-loop
+# malo
 
-**A general exam-revision loop for DeepSeek Harness.** It reads your course materials and your notes vault, then drills you — question, grade, question again — until **every knowledge point** reaches your target accuracy, and finally hands you a pre-exam list.
+**先学，后考。** A study-then-drill bundle for DeepSeek Harness: walk your course materials **in graph order**, seed each knowledge point with a question, then drill until every point reaches your target accuracy — and end with a pre-exam list.
 
-Two things make it different from a quiz bot:
-
-- **Every question requires you to write your reasoning, not just your answer.** Grading checks the reasoning first, then the answer. **A lucky guess does not count as correct.**
-- **Wrong-answer reasons are stored verbatim and reused.** So a mistake you make three times is counted three times, instead of splitting into three near-synonyms and vanishing from the statistics.
-
-通用应试复习闭环：读你的课程材料与笔记库 → 出题 → 批改 → 再出题，直到每个知识点的熟练度都达到目标正确率，最后产出考前 list。**每道题都要求你写出思维链**，批改先判思维链再判答案，**蒙对不算对**。
-
----
+通用应试复习：**先按关系图把材料学一遍，再进入考试循环**。它解决的是「还没学完就做题，错因全变成『我不会』」。
 
 ## 安装
 
@@ -17,65 +10,72 @@ Two things make it different from a quiz bot:
 dsh plugin --profile web add dsh-mastery-loop
 ```
 
-## 用法：两步
+## 五个命令
 
-### 1 · 先初始化（只跑一次）
+| 命令 | 什么时候用 | 写盘吗 |
+| --- | --- | --- |
+| `/malo-setup` | 第一次建库 / 迁移 | 写（手动） |
+| `/malo-kbcheck` | 「体检」「有没有新文件」 | **只读** |
+| `/malo-intake` | 新讲义入库 | 写（要确认） |
+| `/malo-study` | 「开始学习」「先把材料过一遍」 | 写账本 |
+| `/malo-quiz` | 「开始做题」「批改」「考前 list」 | 写账本与错因 |
 
-```
-/mastery-loop-setup
-```
+`/mastery-loop` 与 `/mastery-loop-setup` 仍可用，但只是重定向壳。
 
-它会探测你的课程材料与笔记库，问清路径 / 素材 / 语言 / 融合方式 / 卷子格式，然后在你**知识库根目录**生成 6 个文件并校验：
-
-| 文件 | 作用 |
-| --- | --- |
-| `ledger.md` | 复习账本（进度 + 已初始化的凭据） |
-| `index.md` | 主题 → 知识点的反向索引 |
-| `errors.md` | 错误原因表 |
-| `paper-format.md` | 每个课程的每个考试的卷子格式 |
-| `error-taxonomy.md` | 失分原因分类（**初始为空**，等归纳） |
-| `config.md` | 路径 / 每门课的素材选择 / 语言标准 |
-
-> 初始化**有意做成独立的 skill**：它要问六组问题，跟日常复习是两件事。分开之后 `mastery-loop` 本身短得多。
-
-### 2 · 之后正常复习
+## 生命周期
 
 ```
-/mastery-loop
+/malo-setup（一次）
+   → /malo-kbcheck ←→ /malo-intake
+   → /malo-study
+   → /malo-quiz
 ```
 
-或者直接用自然语言说「我想开始复习了」—— 这个 skill **模型可以自动调用**。
+- **kbcheck**：跑结构 / 图 / 扫库，列出新增·修改·删除文件；版本落后就停。
+- **intake**：读新文件 → 新点 / 改点 → 定前置边 → 补账本行 → 重聚合 MOC。
+- **study**：按图分层，**一份讲义只解析一次**；每点 1 题（含思维链），错则回读 `讲义出处` 再 1 题；两题全错进「不熟清单」。不判达标。
+- **quiz**：出题 → 批改（先判思维链）→ **批改+写回一个动作** → 判达标 → 考前 list。
 
-## 复习循环长什么样
+另有两个只读/派生工具：`sys/layers.json`（分层，`graph.mjs check --layers --write`）给 study 定顺序；`sys/graph.html`（`render-graph.mjs`）把先修图渲染成可缩放的分层图。图重审用 `review.mjs plan`，契约见 `templates.md` §十三。
+
+## 熟练度：不是简单正确率
 
 ```
-读状态 → 与用户逐步确认（范围 / 目标正确率 / 是否混合考）
-   → 复习清单
-   → 出题（每题后面挂「答案：」「思维链：」两行）
-   → 批改（先判思维链 → 再判答案 → 错了才提炼错误原因）
-   → 写回账本与错误原因表
-   → 达标？→ 问是否继续
-   → 考前 list（从第一轮就开始攒，不是最后生成）
+熟练度 = (做对 + 0.5) / (总共出过 + 1)      # Jeffreys
 ```
 
-**达标是逐点判断的**：一个知识点要「**总共出过 ≥ 5** 且 **熟练程度 ≥ 目标正确率**」。不到 5 次标「样本不足」，继续出题。
+- 4/4 = 90.0%，3/4 = 70.0%，1/1 = 75.0%；
+- 达标 = 熟练度 ≥ 目标（默认 0.9）；
+- **没有「总共出过 ≥ 5」的硬阈值**，样本惩罚长在公式里。
 
-## 错误原因为什么写成英文
+## 错误原因：结构化，才能跨轮复用
 
-`errors.md` 里的错误原因**默认用英文** —— 因为要套 **ASD-STE100（简化技术英语）** 的写法：一句一个偏移、不超过 20 词、动词开头、不写题号和数字。
+每条错因是一个 JSON 记录，键是 `(谓词, 涉及集合, 方面)`，原文只用于展示：
 
-这样做的目的是**可统计**：同名错误必须逐字一致，才能数出「我在这一点上错了几次」。
+```json
+{"kind":"error","知识点":"梯度","谓词":"confuse","涉及":["学习率"],"方面":"方向",
+ "错误原因":"Confuse the gradient with the step size.","中文":"把梯度当成步长。",
+ "日期":["2026-11-08"]}
+```
 
-> ⚠️ 口径说明：本 skill **借用 ASD-STE100 的原则**，**不声称符合** ASD-STE100 —— 官方明说它不适用于一般写作。
-> 另外，「同一表述必须逐字复用」是本 skill 的**跨文档外推**（STE 只要求「一篇文档内一致」）。**这个外推的责任在本 skill，不在 ASD。**
+谓词 8 个 + `other`：`confuse / overgeneralize / misorder / omit / invert / misapply / miscompute / notation`。
 
-## 一次只复习一门课吗
+- 跨点混淆**只写一条**，`涉及` 指向另一篇；两个点都能看到，统计只算一次；
+- 新增前先列候选（`errors.mjs query`），没选中再走结构键，仍没有才新增；
+- 写法借用 **ASD-STE100** 的原则（一句一个偏移、≤20 词、动词开头），**不声称合规**。
 
-**建议**。但范围由你定 —— 跨多门时 skill 会问你是否要**跨课程混合出题**（**默认不混合**）。
+## 闸门
 
-## 语言
+六个动作可在 `sys/config.json` 里配 `每次 / 仅首轮 / 从不`：入库、study 开局、study 单点、出题、批改写回、达标后继续。另有一个 `覆盖率阈值`（默认 0.3）：quiz 前若范围内未学率超过它，**警告并放行**。
 
-**按产物类别分别定**（知识点笔记 / 出的题 / 批改解析 / 记录性文件 / 产出 / 机制层），在初始化时问你。想要中英双语对照、法文、或纯中文都行 —— 除了 `errors.md` 的错误原因默认英文（要套 STE）。
+## 从 0.2.0 升级
+
+1. 安装 0.3.0；
+2. 跑 `/malo-kbcheck`，它会说「库版本 0.2.0 < 技能版本 0.3.0」；
+3. 按 `CHANGELOG.md` 的 `### 迁移（0.2.0 → 0.3.0）` 执行：config 补闸门/阈值，`errors.jsonl` 补谓词/涉及/方面（agent 判断），`scan --update-state`；
+4. 再跑一次 `/malo-kbcheck`，结构 / 图应全过。
+
+`kb/` 布局与 451 篇笔记不需要动。
 
 ## License
 

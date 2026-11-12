@@ -19,7 +19,11 @@ const repoRoot = resolve(pkgRoot, '..', '..');
 const SRC = join(repoRoot, '.dsh', 'skills');
 const DST = join(pkgRoot, 'skills');
 
-const SKILLS = ['mastery-loop', 'mastery-loop-setup'];
+const SKILLS = ['malo-kbcheck', 'malo-intake', 'malo-study', 'malo-quiz', 'malo-setup'];
+// 旧名重定向壳：只响应手动输入，不进 catalog。
+const ALIASES = ['mastery-loop', 'mastery-loop-setup'];
+// 共享契约与脚本：不是 skill，但必须随包发布，供各 skill 用 ../_shared/ 引用。
+const ASSETS = ['_shared'];
 
 if (!existsSync(SRC)) {
   console.error('❌ 找不到开发副本：' + SRC);
@@ -30,7 +34,7 @@ if (!existsSync(SRC)) {
 rmSync(DST, { recursive: true, force: true });
 
 let copied = 0;
-for (const name of SKILLS) {
+for (const name of [...ASSETS, ...SKILLS, ...ALIASES]) {
   const from = join(SRC, name);
   if (!existsSync(from)) {
     console.error(`❌ 开发副本里没有 ${name} —— 先把它建出来`);
@@ -40,8 +44,8 @@ for (const name of SKILLS) {
   copied++;
 }
 
-console.log(`✅ 同步完成：${copied} 个 skill → ${DST}`);
-for (const name of SKILLS) {
+console.log(`✅ 同步完成：${SKILLS.length} 个 skill + ${ALIASES.length} 个重定向 + ${ASSETS.length} 个共享目录 → ${DST}`);
+for (const name of [...ASSETS, ...SKILLS, ...ALIASES]) {
   const files = [];
   const walk = (dir, prefix = '') => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
