@@ -1,0 +1,1 @@
+{"用途":"t","规则":"t","version":2,"coverage":{"X":{"done":["A"],"todo":[]}},"edges":[{"from":"A","to":"B","reason":"A"},{"from":"A","to":"C","reason":"A"}],"groups":[{"id":"g1","to":"D","mode":"any","of":["B","C"],"reason":"任选"}]}

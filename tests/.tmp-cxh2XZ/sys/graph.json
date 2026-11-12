@@ -1,0 +1,23 @@
+{
+  "用途": "t",
+  "规则": "t",
+  "version": 2,
+  "coverage": {
+    "X": {
+      "done": [
+        "A"
+      ],
+      "todo": []
+    }
+  },
+  "edges": [
+    {
+      "from": "A",
+      "to": "B",
+      "reason": "A",
+      "reviewedAt": "2026-11-12",
+      "fp": "sha1:9a2c0bb391c472bb"
+    }
+  ],
+  "groups": []
+}
