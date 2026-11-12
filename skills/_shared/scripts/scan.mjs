@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 扫库脚本
 //
-// 用途：本脚本是健康检查 —— 查链接、查分类与配置是否对得上、查图与笔记是否一致、查账本引用；
+// 用途：本脚本是健康检查 —— 查链接、查分类与配置是否对得上、查图与笔记是否一致、查账本引用、查归属来源；
 //       并读 sys/state.jsonl 按内容哈希跳过没变过的文件（--update-state 写回哈希）。
 // 契约正文：../templates.md（第七节）
 //
@@ -12,11 +12,10 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import {
   SYS, readJson, readJsonl, writeJsonl, collectNotes, readNote, readIfPossible,
-  walkMarkdown, parseLinks, sha1,
+  walkMarkdown, parseLinks, sha1, LIB_VERSION,
 } from './_lib.mjs';
 import * as checkGraphModule from './graph.mjs';
 
-const EXPECTED_SCHEMA = '0.2.0';
 
 function main() {
   const argv = process.argv.slice(2);
@@ -74,7 +73,10 @@ function main() {
     const mark = stRows.find((r) => r && r.mode === 'git');
     const last = mark && mark.last ? mark.last : '';
 
-    const inKb = (p) => p.startsWith('kb/') && /\.md$/i.test(p);
+    // 变化检测同时覆盖内容区（kb 的 md）与机器区（sys 的 json/jsonl，state 自身除外）
+    const inKb = (p) =>
+      (p.startsWith('kb/') && /\.md$/i.test(p)) ||
+      (p.startsWith('sys/') && /\.(json|jsonl)$/i.test(p) && !p.endsWith('sys/state.jsonl'));
     const set = new Set();
 
     // ① 未提交的变化
@@ -105,20 +107,20 @@ function main() {
     changedFiles = [...set];
     const total = mdFiles.length;
     unchanged = Math.max(0, total - changedFiles.length);
-    stateRows = [{ mode: 'git', last: head, schema: EXPECTED_SCHEMA, checked: now }];
+    stateRows = [{ mode: 'git', last: head, schema: LIB_VERSION, checked: now }];
   } else {
     const prev = new Map(stRows.map((r) => [r.path, r.hash]));
     for (const p of mdFiles) {
       const rel = p.slice(root.length + 1).split('\\').join('/');
       const h = sha1(readIfPossible(p) || '');
-      stateRows.push({ path: rel, hash: h, schema: EXPECTED_SCHEMA, checked: now });
+      stateRows.push({ path: rel, hash: h, schema: LIB_VERSION, checked: now });
       if (prev.get(rel) === h) unchanged++;
       else changedFiles.push(rel);
     }
   }
 
-  // ---------- ①② 链接（在**所有文件**里解析：PDF 之类也要算存在） ----------
-  const allFiles = walkMarkdown(root, '.');
+  // ---------- ①② 链接（**只查 kb/ 里的笔记**；库外链接归 Obsidian，不归本插件） ----------
+  const linkFiles = walkMarkdown(root, join('kb'));
   const allRel = new Set();
   const allBase = new Map();
   const collect = (dirRel, depth) => {
@@ -147,7 +149,7 @@ function main() {
 
   const normTarget = (t) => t.replace(/^\.\//, '').split('\\').join('/');
 
-  for (const p of allFiles) {
+  for (const p of linkFiles) {
     const rel = p.slice(root.length + 1).split('\\').join('/');
     const text = readIfPossible(p) || '';
     for (const link of parseLinks(text)) {
@@ -175,12 +177,29 @@ function main() {
     const sep = cfg?.['分类']?.['分隔符'] || '/';
     const levels = cfg?.['分类']?.['层级'] || [];
     const values = cfg?.['分类']?.['类值'] || {};
-    if (cfg['schema_version'] && cfg['schema_version'] !== EXPECTED_SCHEMA) {
-      problems.push(`③ config.schema_version = ${cfg['schema_version']}，本套脚本按 ${EXPECTED_SCHEMA} 跑 —— 需要迁移`);
+    if (cfg['schema_version'] && cfg['schema_version'] !== LIB_VERSION) {
+      problems.push(`③ config.schema_version = ${cfg['schema_version']}，本套脚本按 ${LIB_VERSION} 跑 —— 需要迁移（见 CHANGELOG 的 ### 迁移）`);
     }
     for (const [name, p] of collectNotes(root)) {
       const n = readNote(root, name, p, cfg);
       notes.push(n);
+      // ⑥ 归属：frontmatter 里指向的来源文件必须存在
+      {
+        const rawGs = n.data ? n.data['归属'] : null;
+        const gs = Array.isArray(rawGs) ? rawGs : rawGs ? [rawGs] : [];
+        for (const g of gs) {
+          const t = String(g)
+            .trim()
+            .replace(/^\[\[/, '')
+            .replace(/\]\]$/, '')
+            .split('|')[0]
+            .trim()
+            .replace(/\\/g, '/');
+          if (t && !existsSync(join(root, t))) {
+            problems.push(`⑥ 归属缺失：「${name}」的 \`归属\` 指向 \`${t}\`，文件不存在`);
+          }
+        }
+      }
       if (!n.分类.length) {
         problems.push(`③ 「${name}」的 \`${field}\` 是空的 —— 生成知识点时就该附上分类`);
         continue;
@@ -250,7 +269,7 @@ function main() {
   if (updateState) {
     writeJsonl(
       join(root, SYS, 'state.jsonl'),
-      { kind: 'header', '用途': '本文件是状态表（变化检测）：有 git 时只记上次检查到的提交号；没有 git 时逐文件记内容哈希。管「要不要重看」，不管「发生过什么」（那是 git / changes.jsonl）。' },
+      { kind: 'header', '用途': '本文件是状态表（变化检测）：有 git 时只记上次检查到的提交号；没有 git 时逐文件记内容哈希。管「要不要重看」，不管「发生过什么」（那是 git；无 git 时没有历史）。' },
       stateRows
     );
     console.log('（已更新 sys/state.jsonl）');
@@ -264,7 +283,7 @@ function main() {
     return 1;
   }
   console.log('');
-  console.log('✅ 五项全过：链接 / 路径 / 分类与配置 / 图与笔记 / 账本引用。');
+  console.log('✅ 六项全过：链接 / 路径 / 分类与配置 / 图与笔记 / 账本引用 / 归属。');
   return 0;
 }
 

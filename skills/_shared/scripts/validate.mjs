@@ -78,6 +78,18 @@ function inspect(rel, kind) {
         problems.push('缺「分类.层级」—— 分类是全库级定义，必填');
       }
       if (!data['路径'] || !data['路径']['知识库']) problems.push('缺「路径.知识库」');
+      const GATE_KEYS = ['入库', 'study开局', 'study单点', '出题', '批改写回', '达标后继续'];
+      const GATE_VALUES = ['每次', '仅首轮', '从不'];
+      const gates = data['闸门'];
+      if (!gates || typeof gates !== 'object' || Array.isArray(gates)) {
+        problems.push('缺「闸门」段（0.3.0 起必填）');
+      } else {
+        for (const k of GATE_KEYS) {
+          if (!GATE_VALUES.includes(gates[k])) problems.push(`「闸门.${k}」缺失或值非法（应为 每次 / 仅首轮 / 从不）`);
+        }
+      }
+      const th = data['覆盖率阈值'];
+      if (typeof th !== 'number' || th < 0 || th > 1) problems.push('「覆盖率阈值」缺失或不在 0–1');
     }
     if (rel.endsWith('graph.json')) {
       if (!Array.isArray(data['edges'])) problems.push('缺「edges」数组');

@@ -8,12 +8,14 @@
 //   node ledger.mjs stats <工作区根> [--scope 深度学习/L3] [--target 0.9]
 //   node ledger.mjs pick  <工作区根> [--scope …] [--target 0.9] [--n 20]
 //   node ledger.mjs write <工作区根> <updates.jsonl>
+//   node ledger.mjs add   <工作区根> <new-points.jsonl>
 //
 // write 的输入：一行一条 {"知识点":"梯度","做对":1,"总共出过":1,"是否学习过":true,"最后复习日期":"2026-10-15"}
-//   其中 做对 / 总共出过 按**增量**累加；熟练程度自动 = 做对 / 总共出过。
+//   其中 做对 / 总共出过 按**增量**累加；熟练程度自动 = (做对+0.5)/(总共出过+1)（Jeffreys）。
 
 import { existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { SYS, NOTES, readJson, readJsonl, writeJsonl, collectNotes, readNote, readIfPossible } from './_lib.mjs';
 
 function load(root) {
@@ -41,13 +43,13 @@ function proficiency(row) {
   const done = Number(row['总共出过'] || 0);
   const right = Number(row['做对'] || 0);
   if (!done) return null;
-  return Math.round((right / done) * 1000) / 1000;
+  // Jeffreys 估计：4/4 = 90%，3/4 = 70%，1/1 = 75%。
+  return Math.round(((right + 0.5) / (done + 1)) * 1000) / 1000;
 }
 
+/** 达标只看 Jeffreys 熟练度；样本不足只是展示，不是独立判据。 */
 function flag(row, target) {
-  const done = Number(row['总共出过'] || 0);
   const p = proficiency(row);
-  if (done < 5) return '样本不足';
   if (p !== null && p >= target) return '达标';
   return '未达标';
 }
@@ -65,18 +67,20 @@ function cmdStats(root, scopeParts, target) {
   let thin = 0;
   let bad = 0;
   for (const r of rows) {
+    const done = Number(r['总共出过'] || 0);
     const f = flag(r, target);
     if (f === '达标') ok++;
-    else if (f === '样本不足') thin++;
     else bad++;
+    if (done < 3) thin++;
     const p = proficiency(r);
     console.log(
       `- ${r['知识点']} · 出过 ${r['总共出过'] ?? 0} · 做对 ${r['做对'] ?? 0} · 熟练程度 ${p === null ? 'NULL' : p} · ${f}` +
-        (r['最后复习日期'] ? ` · 最后 ${r['最后复习日期']}` : '')
+        (r['最后复习日期'] ? ` · 最后 ${r['最后复习日期']}` : '') +
+        (done < 3 ? ' · 样本不足' : '')
     );
   }
   console.log('');
-  console.log(`达标 ${ok} · 未达标 ${bad} · 样本不足 ${thin}`);
+  console.log(`达标 ${ok} · 未达标 ${bad} · 其中样本不足 ${thin}`);
   return 0;
 }
 
@@ -182,6 +186,92 @@ function cmdWrite(root, updatesPath) {
   return 0;
 }
 
+function cmdAdd(root, rowsPath) {
+  const L = load(root);
+  if (L.err) {
+    console.log(`❌ ${L.err}`);
+    return 1;
+  }
+  const text = readIfPossible(resolve(rowsPath));
+  if (text === null) {
+    console.log(`❌ 读不了新增文件：${rowsPath}`);
+    return 1;
+  }
+  const incoming = text
+    .split(/\r?\n/)
+    .filter((l) => l.trim())
+    .map((l) => {
+      try {
+        return JSON.parse(l);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+  const byName = new Map(L.rows.map((r) => [r['知识点'], r]));
+  let added = 0;
+  let skipped = 0;
+  for (const u of incoming) {
+    const name = u['知识点'];
+    if (!name) continue;
+    if (byName.has(name)) {
+      skipped++;
+      continue;
+    }
+    const row = {
+      '知识点': name,
+      '是否学习过': u['是否学习过'] === true,
+      '做对': 0,
+      '总共出过': 0,
+      '熟练程度': null,
+      '最后复习日期': u['最后复习日期'] ?? null,
+    };
+    L.rows.push(row);
+    byName.set(name, row);
+    added++;
+  }
+  writeJsonl(join(root, SYS, 'ledger.jsonl'), L.header || { kind: 'header', '用途': '本文件是复习账本：逐条记每个知识点的复习统计。' }, L.rows);
+  console.log(`账本新增 ${added} 行，跳过已存在 ${skipped} 行（共 ${L.rows.length} 行）。`);
+  return 0;
+}
+
+function cmdNext(root, scopeParts, n) {
+  const L = load(root);
+  if (L.err) {
+    console.log(`❌ ${L.err}`);
+    return 1;
+  }
+  const layers = readJson(join(root, SYS, 'layers.json'));
+  if (!layers.ok) {
+    console.log(`❌ ${layers.reason}`);
+    console.log('   先跑：node graph.mjs check <工作区根> --layers --write');
+    return 1;
+  }
+  const data = layers.data;
+  const rows = new Map(L.rows.map((r) => [r['知识点'], r]));
+  const limit = n > 0 ? n : 5;
+  const out = [];
+  let total = 0;
+  for (const [depth, names] of (data.layers || []).entries()) {
+    for (const name of names) {
+      const row = rows.get(name);
+      if (row && row['是否学习过'] === true) continue;
+      if (scopeParts && !inScope(L.classes.get(name), scopeParts)) continue;
+      total++;
+      if (out.length < limit) out.push({ name, depth, row });
+    }
+  }
+  console.log(
+    `按层序的下一个：候选 ${total} 个，显示 ${out.length} 个${scopeParts ? `（范围 ${scopeParts.join('/')}）` : ''}`
+  );
+  for (const o of out) {
+    const cls = (L.classes.get(o.name) || []).map((p) => p.join('/')).join(' | ') || '无分类';
+    console.log(`- 层 ${o.depth} · ${o.name} · ${cls}${o.row ? '' : '（账本无此行）'}`);
+  }
+  if (!total) console.log('✅ 范围内都学过了。');
+  return 0;
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const cmd = argv[0];
@@ -191,11 +281,13 @@ function main() {
     return i !== -1 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : dflt;
   };
 
-  if (!['stats', 'pick', 'write'].includes(cmd)) {
+  if (!['stats', 'pick', 'write', 'add', 'next'].includes(cmd)) {
     console.log('用法：');
     console.log('  node ledger.mjs stats <工作区根> [--scope 深度学习/L3] [--target 0.9]');
     console.log('  node ledger.mjs pick  <工作区根> [--scope …] [--target 0.9] [--n 20]');
     console.log('  node ledger.mjs write <工作区根> <updates.jsonl>');
+    console.log('  node ledger.mjs add   <工作区根> <new-points.jsonl>');
+    console.log('  node ledger.mjs next  <工作区根> [--scope …] [--n 5]');
     return 2;
   }
 
@@ -212,12 +304,19 @@ function main() {
 
   if (cmd === 'stats') return cmdStats(root, scope.length ? scope : null, target);
   if (cmd === 'pick') return cmdPick(root, scope.length ? scope : null, target, Number(opt('--n', '0')) || 0);
+  if (cmd === 'add') return cmdAdd(root, rest[1]);
+  if (cmd === 'next') return cmdNext(root, scope.length ? scope : null, Number(opt('--n', '5')) || 5);
   return cmdWrite(root, rest[1]);
 }
 
-try {
-  process.exit(main());
-} catch (err) {
-  console.log('❌ ledger.mjs 自身出错：' + (err && err.message ? err.message : String(err)));
-  process.exit(1);
+const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) {
+  try {
+    process.exit(main());
+  } catch (err) {
+    console.log('❌ ledger.mjs 自身出错：' + (err && err.message ? err.message : String(err)));
+    process.exit(1);
+  }
 }
+
+export { cmdNext };

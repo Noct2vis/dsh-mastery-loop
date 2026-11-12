@@ -15,6 +15,9 @@ export const SYS = 'sys';
 export const AUTO_BEGIN = '<!-- AUTO:BEGIN -->';
 export const AUTO_END = '<!-- AUTO:END -->';
 
+// 本套脚本按这个库版本跑；与 sys/config.json 的 schema_version 比对。
+export const LIB_VERSION = '0.3.0';
+
 export function readIfPossible(p) {
   try {
     return readFileSync(p, 'utf8');
